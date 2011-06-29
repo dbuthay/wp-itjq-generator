@@ -1,6 +1,7 @@
 #!/usr/bin/env ruby
 
 require 'nokogiri'
+require 'date'
 
 class DummyNode
   def text
@@ -8,96 +9,109 @@ class DummyNode
   end
 end
 
-def common_prefix( arr )
-  prefix = arr.first.dup
-  arr[1..-1].each do |e|
-    prefix.slice!(e.size..-1) if e.size < prefix.size   # optimisation
-    prefix.chop! while e.index(prefix) != 0
-  end
-
-  return prefix.slice!(0, prefix.rindex('/'))
-end
-
-
 def common_parent(nodes)
   ancestors = nodes.map { |n|  n.ancestors }
   return ancestors.reduce(:&).first
 end
 
 
-def traverse(n1, n2, n1Specials, indent = 0)
+def traverse(n1, n2, specials, indent = 0)
   return unless n1 && n2
+  if n1.comment? && n2.comment? then
+    return ""
+  end
+
 
   if n1.name == n2.name then
-    
-    tabs = "\t" * (indent + 1)
-    buff = "#{tabs}#{jQueryFyNodes(n1, n2, n1Specials)}\n"
 
+
+    # handle text nodes .. 
+    if n1.text? and n2.text? then
+      if n1.text() == n2.text() then
+        if n1.text().strip().empty? then 
+          return ""
+        else
+          return ".text('#{n1.text}')"
+        end
+
+      else 
+        case n1
+          when specials["title"] 
+            return ".text( item.post_title )"
+          when specials["description"] 
+            return ".html( item.snippet_post_content || item.post_content.substr(0, 200) ).append('...').prepend('...')"
+          else
+            if DateTime.parse(n1.text) then
+              return ".text( d.toLocaleDateString() )" 
+            end
+        end
+      end
+    end
+
+
+
+    # handle regular nodes
+    tabs = "\t" * (indent + 1)
+    if indent == 0 then
+      append = ""
+    else 
+      append = ".append("
+    end
+
+    buff = "\n#{tabs}#{append}jQuery( '<#{n1.name}/>' )"
+
+    dummy = DummyNode.new
+    # handle classes
+    cls = ( n1.attribute("class") || dummy ).text.split() & ( n2.attribute("class") || dummy ).text.split()
+    cls.each do |cl|
+      buff += ".addClass('#{cl}')"
+    end
+  
+  
+    # handle some specials nodes .. As and IMGs
+    case n1.name
+      when 'a'
+        # keep href ?
+        if n1.attribute('href') != n2.attribute('href') then
+          buff += ".attr('href', item.url )"
+        else
+          buff += ".attr('href','#{n1.attribute('href')}' )"
+        end
+      when 'img'
+        # keep src ?
+        if n1.attribute('src') != n2.attribute('src') then
+          buff += ".attr('src', item.thumbnail )"
+        else
+          buff += ".attr('src','#{n1.attribute('src')}' )"
+        end
+    end
+
+
+    # and traverse children
+
+    # same count? it may be just formatting markup, or meta
+    # or sharing .. not super post-depending
     if n1.children.length() == n2.children.length() then
       n1.children.to_a.each_index do |idx|
-        buff += traverse(n1.children[idx], n2.children[idx], n1Specials, indent + 1)
+        buff += traverse(n1.children[idx], n2.children[idx], specials, indent + 1)
       end
-
+    else
+      # So this changes from post to post .. it MAY be the content .. 
+      if specials["description"].ancestors[0..2].index(n1) >= 0 then
+        buff += ".html( item.snippet_post_content || item.post_content.substr(0, 200) )"
+      end
     end
 
-  end
-
-  buff += ")\n"
-
-  return buff
-end
-
-
-def jQueryFyNodes( n1, n2, specials )
-  return "" unless n1.name == n2.name
-
-  if n1.text? and n2.text? then
-    if n1.text() == n2.text() then
-      if n1.text().strip().empty? then 
-        return ""
-      else
-        return ".text('#{n1.text}'"
-      end
-
-    else 
-      case n1
-        when specials["title"] 
-          return ".text ( item.post_title "
-        when specials["description"] 
-          return ".html( item.snippet_post_content || item.post_content.substr(0, 200)"
-      end
+    buff += "\n#{tabs}"
+    if indent > 0 then
+      buff += ")"
     end
   end
 
-  buff = ".append( jQuery( '<#{n1.name}/>' )"
-
-  dummy = DummyNode.new
-  # handle classes
-  cls = ( n1.attribute("class") || dummy ).text.split() & ( n2.attribute("class") || dummy ).text.split()
-  cls.each do |cl|
-    buff += ".addClass('#{cl}')"
-  end
-
-  # handle some specials nodes .. As and IMGs
-  case n1.name
-    when 'a'
-      # keep href ?
-      if n1.attribute('href') != n2.attribute('href') then
-        buff += ".attr('href', item.url )"
-      else
-        buff += ".attr('href','#{n1.attribute('href')}' )"
-      end
-    when 'img'
-      # keep src ?
-      if n1.attribute('src') != n2.attribute('src') then
-        buff += ".attr('src', item.thumbnail )"
-      else
-        buff += ".attr('src','#{n1.attribute('src')}' )"
-      end
-  end
 
   buff
 end
+
 
 
 def jQueryFy( node, specials, indent = 0)
@@ -184,20 +198,15 @@ paired_items.each_pair do |i, m|
     end
 
     if nodes.length == 1 then
-      print "no use on finding the best node for #{i.path} .. there's only one\n"
+      #print "no use on finding the best node for #{i.path} .. there's only one\n"
 
     end
 
      
     if nodes.length > 1 then
-      print "finding the best #{type} node for #{i.path}\n"
+      #print "finding the best #{type} node for #{i.path}\n"
 
-      # get rid of text nodes
-      #nodes.reject! {|n| n.text? }
       nodes.sort_by! {|n| n.ancestors.size }
-      nodes.each do |n| 
-        print "\t", n.path, "\n"
-      end
     
     end
     
@@ -243,23 +252,62 @@ parent_tracking = {}
 paired_items.each_pair do |i, m|
 
   prefix = common_parent(m.values)
-  print "the container for #{i.path} is #{prefix.path} .. #{prefix.attribute('class')}\n"
+  #print "the container for #{i.path} is #{prefix.path} .. #{prefix.attribute('class')}\n"
 
   parent_tracking[i] = prefix
 
 end
 
-print traverse(parent_tracking.values[-1], parent_tracking.values[-2], paired_items[parent_tracking.keys[-1]])
+# so we got almost everything 
+
+fmt = traverse(parent_tracking.values[-1], parent_tracking.values[-2], paired_items[parent_tracking.keys[-1]])
+
+print %{
+// THIS CODE WAS AUTO GENERATED BY WP-ITJQ-GENERATOR.
+// YOU SHOULD VERIFY THAT THE FOLLOWING ITEMS ARE OK:
+//  - dates
+//  - urls (comment urls ?)
+//  - author names
+//  - image urls
+
+}
+
+print "jQuery(window).load( function() { \n"
+print "var fmt = function(item) {\n"
+print "\tvar d = new Date( item.timestamp * 1000);\n"
+print "\tvar r = #{fmt};\n"
+print "\treturn r;\n"
+print "};\n"
 
 
-#container = common_parent( parent_tracking.values)
-
-#print "the CONTAINER is #{container.path} .. #{container.attribute('class')}\n"
-
-
-#print jQueryFy( blog.xpath(parent_tracking.first.last() ).first(), paired_items.first.last)
-
-exit
+container = common_parent( parent_tracking.values )
+input = blog.css("input[name='s']").first
+form = input.ancestors.css("form").first
 
 
+if input.attribute("id") then
+  input = "##{input.attribute('id')}"
+else 
+  input = "input[name='s']"
+end
 
+if container.attribute("id") then
+  container = "##{container.attribute("id")}"
+elsif container.attribute("class") then
+  container_class = "#{container.name}.#{container.attribute('class')}"
+  possible_containers = blog.css(container_class)
+  if possible_containers.size() == 1 then
+    container = container_class
+  end
+end
+
+print %{
+  var rw = function(q) { return 'post_content:(' + q + ') OR post_title:(' + q + ') OR post_author:(' + q + ')';}
+  var r = jQuery('#{container}').indextank_Renderer({format: fmt});
+  jQuery('#{input}').parents('form').indextank_Ize(INDEXTANK_PUBLIC_URL, INDEXTANK_INDEX_NAME);
+  jQuery('#{input}').indextank_Autocomplete().indextank_AjaxSearch({ listeners: r, 
+                                                               fields: 'post_title,post_author,timestamp,url,thumbnail,post_content',
+                                                               snippets:'post_content', 
+                                                               rewriteQuery: rw }).indextank_InstantSearch();
+\});
+}
