@@ -23,7 +23,7 @@ class Generator
 
 
   def traverse(n1, n2, specials, indent = 0)
-    return unless n1 && n2
+    return "" unless n1 && n2
     if n1.comment? && n2.comment? then
       return ""
     end
@@ -99,11 +99,11 @@ class Generator
       # or sharing .. not super post-depending
       if n1.children.length() == n2.children.length() then
         n1.children.to_a.each_index do |idx|
-          buff += traverse(n1.children[idx], n2.children[idx], specials, indent + 1)
+          buff += traverse(n1.children[idx], n2.children[idx], specials, indent + 1 ) || ""
         end
       else
         # So this changes from post to post .. it MAY be the content .. 
-        if specials["description"].ancestors[0..2].index(n1) >= 0 then
+        if ( specials["description"].ancestors[0..2].index(n1) || 0 ) >= 0 then
           buff += ".html( item.snippet_post_content || item.post_content.substr(0, 200) )"
         end
       end
