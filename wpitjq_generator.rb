@@ -22,6 +22,22 @@ class Generator
   end
 
 
+  def is_author_node(node)
+    clazzez = ['author', 'vcard']
+    node.ancestors.each do |p|
+      attr = p.attribute("class") || DummyNode.new
+      clazzez.each do |clazz|
+        if attr.text.index(clazz) != nil then
+          print "#{node}"
+          return true
+        end
+      end
+    end 
+
+    return false
+  end
+
+
   def traverse(n1, n2, specials, indent = 0)
     return "" unless n1 && n2
     if n1.comment? && n2.comment? then
@@ -47,8 +63,16 @@ class Generator
             when specials["description"] 
               return ".html( item.snippet_post_content || item.post_content.substr(0, 200) ).append('...').prepend('...')"
             else
-              if DateTime.parse(n1.text) then
-                return ".text( d.toLocaleDateString() )" 
+              if is_author_node(n1) then
+                return ".text( item.post_author )"
+              else
+                # last resource
+                begin
+                  DateTime.parse(n1.text)
+                  return ".text( d.toLocaleDateString() )"
+                rescue 
+                  # ignore
+                end
               end
           end
         end
@@ -144,7 +168,7 @@ class Generator
         node = n.xpath(type).first
         nodes = []
         blog.css("body").first.traverse do |b|
-          if b.text()[0,50] == node.text()[0,50] then
+          if b.text()[0,20].downcase.strip == node.text()[0,20].downcase.strip then
             nodes << b
           end
         end
@@ -164,7 +188,7 @@ class Generator
         # try to find out the best node for each one
         if nodes.length == 0 then
           paired_items.delete(i)
-          next
+          break
         end
 
         if nodes.length == 1 then
@@ -183,7 +207,6 @@ class Generator
         
         # keep the best one .. no need for the others 
         paired_items[i][type] = nodes.last
-
       end
     end
 
