@@ -10,14 +10,16 @@ class DummyNode
   end
 end
 
-
 class Generator 
 
   def initialize
   end
 
+  # for a given list of nodes, computes the common parent.
+  # as this nodes are all part of the same tree, 
+  # they MUST have a common parent (or one of them be the root)
   def common_parent(nodes)
-    ancestors = nodes.map { |n|  n.ancestors }
+    ancestors = nodes.map { |n|  n.ancestors << n }
     return ancestors.reduce(:&).first
   end
 
@@ -264,7 +266,7 @@ class Generator
     if input.attribute("id") then
       input = "##{input.attribute('id')}"
     else 
-      input = "input[name='s']"
+      input = 'input[name="s"]'
     end
 
     if container.attribute("id") then
