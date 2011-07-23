@@ -25,17 +25,32 @@ class Generator
 
 
   def is_author_node(node)
-    clazzez = ['author', 'vcard']
-    node.ancestors.each do |p|
-      attr = p.attribute("class") || DummyNode.new
-      clazzez.each do |clazz|
-        if attr.text.index(clazz) != nil then
-          print "#{node}"
-          return true
-        end
-      end
-    end 
 
+    # what to seek on every attribute.
+    # search for:
+    #   - author or vcard on 'class'
+    #   - author on 'rel'
+    special_attrs = { :class => ['author', 'vcard'],
+                      :rel => ['author']
+                    }
+
+    # go up in the hierarchy
+    node.ancestors.each do |p|
+      special_attrs.each_pair do |attr_name, goals|
+
+        attr = p.attribute(attr_name) || DummyNode.new
+
+        goals.each do |goal|
+          if attr.text.index(goal) != nil then
+            print "#{node}"
+            return true
+          end
+        end
+
+      end
+    end
+
+    # sorry
     return false
   end
 
@@ -55,7 +70,7 @@ class Generator
           if n1.text().strip().empty? then 
             return ""
           else
-            return ".text('#{n1.text}')"
+            return ".text(' #{n1.text().strip()} ')"
           end
 
         else 
@@ -254,13 +269,14 @@ class Generator
     end
 
   
-    # so we got almost everything 
-    fmt = traverse(parent_tracking.values[-1], parent_tracking.values[-2], paired_items[parent_tracking.keys[-1]])
-
-
     container = common_parent( parent_tracking.values )
     input = blog.css("input[name='s']").first
-    form = input.ancestors.css("form").first
+
+    # verify there was a search box. It may not be the case
+    if input == nil then
+      print "\tthis theme does NOT have a searchbox!"
+      return ""
+    end
 
 
     if input.attribute("id") then
@@ -278,6 +294,9 @@ class Generator
         container = container_class
       end
     end
+    
+    # so we got almost everything 
+    fmt = traverse(parent_tracking.values[-1], parent_tracking.values[-2], paired_items[parent_tracking.keys[-1]])
 
 
     buff =  "
