@@ -30,8 +30,8 @@ class Generator
     # search for:
     #   - author or vcard on 'class'
     #   - author on 'rel'
-    special_attrs = { :class => ['author', 'vcard'],
-                      :rel => ['author']
+    special_attrs = { "class" => ['author', 'vcard'],
+                      "rel" => ['author']
                     }
 
     # go up in the hierarchy
@@ -66,13 +66,23 @@ class Generator
 
       # handle text nodes .. 
       if n1.text? and n2.text? then
+
+        if is_author_node(n1) then
+          return ".text( item.post_author )"
+        end
+
+        # else 
         if n1.text() == n2.text() then
           if n1.text().strip().empty? then 
             return ""
           else
-            return ".text(' #{n1.text().strip()} ')"
+            # check for siblings .. text overrides siblings! 
+            if n1.next == nil then
+              return ".text(' #{n1.text().strip()} ')"
+            else
+              return ".append(' #{n1.text().strip()} ')"
+            end
           end
-
         else 
           case n1
             when specials["title"] 
@@ -80,21 +90,16 @@ class Generator
             when specials["description"] 
               return ".html( item.snippet_post_content || item.post_content.substr(0, 200) ).append('...').prepend('...')"
             else
-              if is_author_node(n1) then
-                return ".text( item.post_author )"
-              else
-                # last resource
-                begin
-                  DateTime.parse(n1.text)
-                  return ".text( d.toLocaleDateString() )"
-                rescue 
-                  # ignore
-                end
+              # last resource
+              begin
+                DateTime.parse(n1.text)
+                return ".text( d.toLocaleDateString() )"
+              rescue 
+                # ignore
               end
           end
         end
       end
-
 
 
       # handle regular nodes
