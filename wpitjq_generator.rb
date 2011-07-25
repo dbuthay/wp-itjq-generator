@@ -67,11 +67,6 @@ class Generator
       # handle text nodes .. 
       if n1.text? and n2.text? then
 
-        if is_author_node(n1) then
-          return ".text( item.post_author )"
-        end
-
-        # else 
         if n1.text() == n2.text() then
           if n1.text().strip().empty? then 
             return ""
@@ -90,6 +85,11 @@ class Generator
             when specials["description"] 
               return ".html( item.snippet_post_content || item.post_content.substr(0, 200) ).append('...').prepend('...')"
             else
+              if is_author_node(n1) then
+                return ".text( item.post_author )"
+              end
+
+              # else 
               # last resource
               begin
                 DateTime.parse(n1.text)
