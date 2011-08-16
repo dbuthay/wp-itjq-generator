@@ -332,14 +332,14 @@ class Generator
 
 
       // Listeners for indextank_AjaxSearch
-      var listeners = [];
+      var listeners = jQuery(new Object());
 
       // create some placeholders
       // - stats
       var stContainer = jQuery('<div/>').attr('id','stats').hide();
       stContainer.append(jQuery('<span/>')); // deal with stats wanting something inside the container, to 'replace'
       stContainer.indextank_StatsRenderer();
-      listeners.push(stContainer);
+      listeners = listeners.add(stContainer);
 
       // - sorting
       // it may not be present on indextank-wordpress < 1.2 .. check it first
@@ -347,30 +347,35 @@ class Generator
         var sortingContainer = jQuery('<div/>').attr('id', 'sorting').hide();
         sortingContainer.indextank_Sorting({labels: {'relevance': 0, 'newest': 1, 'comments': 2 }});
         jQuery('#{container}').prepend(sortingContainer);
-        listeners.push(sortingContainer);
+        listeners = listeners.add(sortingContainer);
 
         // sorting controls should appear as soon as a query triggers .. no sooner.
         // fix that
         var sortingVisible = jQuery(new Object()).bind('Indextank.AjaxSearch.success', function(){
           jQuery('#sorting').show();
         });
-        listeners.push(sortingVisible);
+        listeners = listeners.add(sortingVisible);
       } 
 
 
       // - pagination
       var pContainer = jQuery('<div/>').attr('id','paginator').hide();
       pContainer.indextank_Pagination({maxPages:5});
-      listeners.push(pContainer);
+      listeners = listeners.add(pContainer);
 
       jQuery('#{container}').prepend(stContainer).append(pContainer);
 
       
 
       
-      var rw = function(q) { return 'post_content:(' + q + ') OR post_title:(' + q + ') OR post_author:(' + q + ')';}
+      var rw = function(q) { 
+        if (/[\):]/.test(q)) return q;
+        
+        //else
+        return 'post_content:(' + q + ') OR post_title:(' + q + ') OR post_author:(' + q + ')';
+      }
       var r = jQuery('#{container}').indextank_Renderer({format: fmt, setupContainer: setupContainer, afterRender: afterRender});
-      listeners.push(r);
+      listeners = listeners.add(r);
       jQuery('#{input}').parents('form').indextank_Ize(INDEXTANK_PUBLIC_URL, INDEXTANK_INDEX_NAME);
       jQuery('#{input}').indextank_Autocomplete().indextank_AjaxSearch({ listeners: listeners, 
                                                                    fields: 'post_title,post_author,timestamp,url,thumbnail,post_content',
