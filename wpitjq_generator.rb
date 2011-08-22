@@ -3,6 +3,7 @@
 require 'nokogiri'
 require 'date'
 require 'open-uri'
+require 'logger'
 
 class DummyNode
   def text
@@ -13,6 +14,8 @@ end
 class Generator 
 
   def initialize
+    @log = Logger.new(STDOUT)
+    @log.level = Logger::DEBUG
   end
 
   # for a given list of nodes, computes the common parent.
@@ -42,7 +45,7 @@ class Generator
 
         goals.each do |goal|
           if attr.text.index(goal) != nil then
-            print "#{node}"
+            @log.debug( "#{node} is an author node")
             return true
           end
         end
@@ -149,7 +152,7 @@ class Generator
         end
       else
         # So this changes from post to post .. it MAY be the content .. 
-        if ( specials["description"].ancestors[0..2].index(n1) || 0 ) >= 0 then
+        if ( specials["description"].index(n1) || 0 ) >= 0 then
           buff += ".html( item.snippet_post_content || item.post_content.substr(0, 200) )"
         end
       end
@@ -175,6 +178,7 @@ class Generator
 
 
     items = rss.xpath("//item")
+    @log.debug "found #{items.length} items"
     paired_items = {}
 
 
@@ -200,81 +204,52 @@ class Generator
     end
 
 
+    containers = {}
 
 
     # So, for each item we have a mapping from
     # content type => blog node that matches
-    paired_items.each_pair do |i, m|
+    paired_items.each_pair do |i, mapping|
 
-      m.each_pair do |type, nodes|
-        # try to find out the best node for each one
-        if nodes.length == 0 then
-          paired_items.delete(i)
-          break
+      parents = []
+
+      # for each possible title, find the common parent for every description
+      mapping["title"].each do |a_title|
+        mapping["description"].each do |a_desc|
+          parents << common_parent( [a_title, a_desc] )
         end
-
-        if nodes.length == 1 then
-          #print "no use on finding the best node for #{i.path} .. there's only one\n"
-
-        end
-
-         
-        if nodes.length > 1 then
-          #print "finding the best #{type} node for #{i.path}\n"
-
-          nodes = nodes.sort_by {|n| n.ancestors.size }
-        
-        end
-        
-        
-        # keep the best one .. no need for the others 
-        paired_items[i][type] = nodes.last
       end
-    end
 
+      parents = parents.sort_by { |n| n.ancestors.size }
+
+      # keep track of the best container, for every item
+      containers[i] = parents.last unless parents.empty?
+    end
 
 
 
     # ok, so I got for every item a path for its title and description
     # try to find out if there are outliers, and discard them 
     lengths = {}
-    paired_items.values.each do |m|
-      m.each_pair do |type, node|
-        l = node.ancestors.size
+    containers.values.each do |node| 
+      l = node.ancestors.size
 
-        # initialize if needed
-        lengths[type] = {} unless lengths[type]
-        lengths[type][l] = 0 unless lengths[type][l]
+      # initialize if needed
+      lengths[l] = 0 unless lengths[l]
 
-        # and count
-        lengths[type][l] += 1 
-      end
+      # and count
+      lengths[l] += 1 
     end
 
-    lengths.each_pair do |type, counts|
-      counts = counts.sort {|a,b| a[1] <=> b[1] }
+    lengths = lengths.sort {|a,b| a[1] <=> b[1] }
       
-      paired_items.each_pair do |item, m|
-        # only keep those whose length equals the most likely one 
-        paired_items.delete(item) unless m[type].ancestors.size  == counts.last.first
-      end
-
+    containers.each_pair do |item, prefix|
+      # only keep those whose length equals the most likely one 
+      containers.delete(item) unless prefix.ancestors.size  == lengths.last.first
     end
 
 
-    # find the DOM element representing each item .. should be the common parent for title / description for each item.
-    parent_tracking = {} 
-    paired_items.each_pair do |i, m|
-
-      prefix = common_parent(m.values)
-      #print "the container for #{i.path} is #{prefix.path} .. #{prefix.attribute('class')}\n"
-
-      parent_tracking[i] = prefix
-
-    end
-
-  
-    container = common_parent( parent_tracking.values )
+    container = common_parent( containers.values )
     input = blog.css("input[name='s']").first
 
     # verify there was a search box. It may not be the case
@@ -300,8 +275,9 @@ class Generator
       end
     end
     
-    # so we got almost everything 
-    fmt = traverse(parent_tracking.values[-1], parent_tracking.values[-2], paired_items[parent_tracking.keys[-1]])
+    # so we got almost everything
+    @log.debug paired_items[containers.keys[-1]]
+    fmt = traverse(containers.values[-1], containers.values[-2], paired_items[containers.keys[-1]])
 
 
     buff =  "
