@@ -152,7 +152,8 @@ class Generator
         end
       else
         # So this changes from post to post .. it MAY be the content .. 
-        if ( specials["description"].index(n1) || 0 ) >= 0 then
+        @log.debug "this may be a post content .. #{n1.path} .. n1 has #{n1.children.length} and n2 has #{n2.children.length}"
+        if ( specials["description"].ancestors.index(n1) || 0 ) > 0 then
           buff += ".html( item.snippet_post_content || item.post_content.substr(0, 200) )"
         end
       end
@@ -216,13 +217,16 @@ class Generator
       # for each possible title, find the common parent for every description
       mapping["title"].each do |a_title|
         mapping["description"].each do |a_desc|
-          parents << common_parent( [a_title, a_desc] )
+          # push the parent, and keep track of which nodes generated it
+          parents << [ common_parent( [a_title, a_desc] ), a_title, a_desc]
         end
       end
 
-      parents = parents.sort_by { |n| n.ancestors.size }
+      # sort parents by its path length .. 
+      parents = parents.sort_by { |t| t[0].ancestors.size }
 
       # keep track of the best container, for every item
+      # the longer the path, the better
       containers[i] = parents.last unless parents.empty?
     end
 
@@ -231,7 +235,10 @@ class Generator
     # ok, so I got for every item a path for its title and description
     # try to find out if there are outliers, and discard them 
     lengths = {}
-    containers.values.each do |node| 
+    containers.values.each do |tuple| 
+
+      # the node is the first on the tuple.
+      node = tuple[0]
       l = node.ancestors.size
 
       # initialize if needed
@@ -243,13 +250,14 @@ class Generator
 
     lengths = lengths.sort {|a,b| a[1] <=> b[1] }
       
-    containers.each_pair do |item, prefix|
+    containers.each_pair do |item, tuple|
+      prefix = tuple[0]
       # only keep those whose length equals the most likely one 
       containers.delete(item) unless prefix.ancestors.size  == lengths.last.first
     end
 
 
-    container = common_parent( containers.values )
+    container = common_parent( containers.values.map { |tuple| tuple[0]} )
     input = blog.css("input[name='s']").first
 
     # verify there was a search box. It may not be the case
@@ -276,8 +284,9 @@ class Generator
     end
     
     # so we got almost everything
-    @log.debug paired_items[containers.keys[-1]]
-    fmt = traverse(containers.values[-1], containers.values[-2], paired_items[containers.keys[-1]])
+    specials = {  'title'       => containers.values[0][1],
+                  'description' => containers.values[0][2] } 
+    fmt = traverse(containers.values[0][0], containers.values[1][0], specials)
 
 
     buff =  "
@@ -358,7 +367,7 @@ class Generator
                                                                    snippets:'post_content', 
                                                                    rewriteQuery: rw }).indextank_InstantSearch();
     });
-    "
+"
 
     return buff
   
